@@ -26,5 +26,15 @@ class Filter(BaseModel):
     value: Any
     condition: Condition
 
+class Aggregation(BaseModel):
+    column: str
+    function: AggregateFunction
+    alias: str
+    filter: bool = False
+    filterCriteria: Any = None
+    filterCondition: Condition | None = None
+
 class ExploreDataRequest(BaseModel):
     filters: list[Filter]
+    group_bys: list[str]
+    aggregations: list[Aggregation]
