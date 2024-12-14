@@ -1,0 +1,17 @@
+meta {
+  name: Upload CSV
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://localhost:8000/upload-csv
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "csv_link": "https://docs.google.com/spreadsheets/d/e/2PACX-1vSCtraqtnsdYd4FgEfqKsHMR2kiwqX1H9uewvAbuqBmOMSZqTAkSEXwPxWK_8uYQap5omtMrUF1UJAY/pub?gid=1439814054&single=true&output=csv"
+  }
+}
