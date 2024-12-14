@@ -1,16 +1,19 @@
-from typing import Any
-from fastapi import FastAPI, Depends, HTTPException, Query, Request
-from sqlalchemy import Column
-from sqlalchemy.orm import Session, Query as SqlQuery, load_only
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, Depends, HTTPException, Request
 import pandas as pd
-from datetime import date, datetime
 import json
 import os
 
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import text
 from starlette.responses import JSONResponse
 
 from database import SessionLocal, create_tables, GameData, getNameToColumnMap
-from models import Filter, UploadCsvRequest, Condition, ExploreDataRequest
+from models import UploadCsvRequest, ExploreDataRequest
+from utils import getAggregateFilter, getAggregateFunc, getFilter, parseDate, hashString
+
 
 app = FastAPI(title="Game Analytics Data Explorer")
 
@@ -22,13 +25,10 @@ def get_db():
     finally:
         db.close()
 
-def passwordHasher(input):
-    return input
-
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     password = request.headers.get('password')
-    if passwordHasher(password) != os.getenv("ADMIN_PASSWORD_HASH"):
+    if hashString(password) != os.getenv("ADMIN_PASSWORD_HASH"):
         return JSONResponse({ 'error': 'UnAuthorized' }, 401, {"WWW-Authenticate": "Basic"})
     response = await call_next(request)
     return response
@@ -42,12 +42,6 @@ def startup():
 def fixBadData(df: pd.DataFrame) -> None:
     df.fillna({ 'Name': '', 'Required age': 0, 'Price': 0, 'DLC count': 0, 'About the game': '', 'Supported languages': '', 'Windows': False, 'Mac': False, 'Linux': False, 'Positive': 0, 'Negative': 0, 'Score rank': 0, 'Developers': '', 'Publishers': '', 'Categories': '', 'Genres': '', 'Tags': ''}, inplace=True)
 
-def parseDate(input):
-    try:
-        return datetime.strptime(input, "%b %d, %Y").date()
-    except:
-        # it is possible that sometimes there's no date in the input
-        return datetime.strptime(input, "%b %Y").date()
 
 def csvToList(input) -> list[str]:
     return input.split(",")
@@ -99,61 +93,58 @@ async def upload_csv(body: UploadCsvRequest, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-def applyFilter(query: SqlQuery[GameData], filter: Filter, col_name_map: dict[str, Column]):
-    column = col_name_map.get(filter.column)
-    if column is None:
-        raise HTTPException(400, f'Unknown column {filter.column}')
-    print(column, filter, column.type.python_type)
-    if filter.condition == Condition.EQ:
-        if column.type.python_type is str:
-            condition = f'%{filter.value}%'
-            return query.filter(column.ilike(condition))
-        elif column.type.python_type is list:
-            return query.filter(column.contains([filter.value]))
-
-        value = parseDate(filter.value) if column.type.python_type is date else filter.value
-        return query.filter(col_name_map[filter.column] == value)
-    elif filter.condition == Condition.LT:
-        if column.type.python_type in [str, bool, list]:
-            raise HTTPException(400, f'Invalid filter operation ({filter.condition}) for column ({filter.column}) of type {column.type.python_type}')
-        value = parseDate(filter.value) if column.type.python_type is date else filter.value
-        return query.filter(column < value)
-    elif filter.condition == Condition.GT:
-        if column.type.python_type in [str, bool, list]:
-            raise HTTPException(400, f'Invalid filter operation ({filter.condition}) for column ({filter.column}) of type {column.type.python_type}')
-        value = parseDate(filter.value) if column.type.python_type is date else filter.value
-        return query.filter(column > value)
-    elif filter.condition == Condition.GTE:
-        if column.type.python_type in [str, bool, list]:
-            raise HTTPException(400, f'Invalid filter operation ({filter.condition}) for column ({filter.column}) of type {column.type.python_type}')
-        value = parseDate(filter.value) if column.type.python_type is date else filter.value
-        return query.filter(column >= value)
-    elif filter.condition == Condition.LTE:
-        if column.type.python_type in [str, bool, list]:
-            raise HTTPException(400, f'Invalid filter operation ({filter.condition}) for column ({filter.column}) of type {column.type.python_type}')
-        value = parseDate(filter.value) if column.type.python_type is date else filter.value
-        return query.filter(column <= value)
-    else:
-        raise HTTPException(400, f'Invalid filter operation {filter.condition}')
-
 @app.get("/explore/")
 def explore_data(
     body: ExploreDataRequest,
     db: Session = Depends(get_db)
 ):
-    query = db.query(GameData)
+    has_aggregations = len(body.aggregations) > 0
+    if has_aggregations and len(body.group_bys) == 0:
+        raise HTTPException(400, "Group by is required for any aggregation")
+
+    if len(body.group_bys) > 0 and not has_aggregations:
+        raise HTTPException(400, "Aggregations are required for group by")
 
     col_name_map = getNameToColumnMap()
-    for filter in body.filters:
-        query = applyFilter(query, filter, col_name_map)
-
-   
-    total_count = query.count()
-    results = query.all()
+    select_cols: list[str] = []
     
+    filters: list[str] = [ getFilter(filter, col_name_map) for filter in body.filters ]
+
+    group_bys: list[str] = []
+    for group_by in body.group_bys:
+        column = col_name_map.get(group_by)
+        if column is None:
+            raise HTTPException(400, f"Unknown column {group_by}")
+        select_cols.append(column.name)
+        group_bys.append(column.name)
+
+
+    having_filters: list[str] = []
+
+    for aggregate in body.aggregations:
+        aggregate_clause = getAggregateFunc(aggregate, col_name_map)
+        select_cols.append(aggregate_clause)
+        if aggregate.filter:
+            having_filters.append(getAggregateFilter(aggregate, col_name_map))
+
+    query = f"SELECT {','.join(select_cols) if len(select_cols)> 0 else '*'} FROM {GameData.__tablename__}"
+    if len(filters) > 0:
+        query += f" WHERE {' AND '.join(filters)}"
+
+    if len(group_bys) > 0:
+        query += f" GROUP BY {','.join(group_bys)}"
+
+    if len(having_filters) > 0:
+        query += f" HAVING {' AND '.join(having_filters)}"
+
+    print(query)
+        
+    with db.connection() as conn:
+        result = conn.execute(text(query))
+        result = result.mappings().all()
+
     return {
-        "total_count": total_count,
-        "results": results
+        "results": result
     }
 
 # Health check endpoint

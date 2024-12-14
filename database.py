@@ -1,9 +1,8 @@
 from collections import defaultdict
 from sqlalchemy import BigInteger, Date, create_engine, Column, Integer, String, Float, Boolean, Text
-from sqlalchemy.dialects.postgresql import ARRAY, Any
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from typing import Any as AnyType
 import os
 
 # Database Connection
@@ -39,7 +38,7 @@ class GameData(Base):
     tags = Column(ARRAY(String))
 
 
-column_name_map: dict[str, Column[AnyType]] = defaultdict(None)
+column_name_map: dict[str, Column] = defaultdict(None)
 
 # Create tables
 def create_tables():
