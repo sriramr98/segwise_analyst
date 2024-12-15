@@ -1,14 +1,14 @@
 from dotenv import load_dotenv
+
+from authorizer import verify_password
 load_dotenv()
 
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException
 import pandas as pd
 import json
-import os
 
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
-from starlette.responses import JSONResponse
 
 from database import SessionLocal, create_tables, GameData, getNameToColumnMap
 from models import UploadCsvRequest, ExploreDataRequest
@@ -25,15 +25,6 @@ def get_db():
     finally:
         db.close()
 
-@app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
-    password = request.headers.get('password')
-    if hashString(password) != os.getenv("ADMIN_PASSWORD_HASH"):
-        return JSONResponse({ 'error': 'UnAuthorized' }, 401, {"WWW-Authenticate": "Basic"})
-    response = await call_next(request)
-    return response
-
-
 @app.on_event("startup")
 def startup():
     create_tables()
@@ -47,7 +38,7 @@ def csvToList(input) -> list[str]:
     return input.split(",")
 
 @app.post("/upload-csv/")
-async def upload_csv(body: UploadCsvRequest, db: Session = Depends(get_db)):
+async def upload_csv(body: UploadCsvRequest, db: Session = Depends(get_db), _ = Depends(verify_password)):
     try:
         # Read CSV
         df = pd.read_csv(body.csv_link, parse_dates=['Release date'])
@@ -96,7 +87,8 @@ async def upload_csv(body: UploadCsvRequest, db: Session = Depends(get_db)):
 @app.get("/explore/")
 def explore_data(
     body: ExploreDataRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _ = Depends(verify_password)
 ):
     has_aggregations = len(body.aggregations) > 0
     if has_aggregations and len(body.group_bys) == 0:

@@ -11,7 +11,7 @@ services:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgresql+psycopg2://postgres:newpassword@db:5432/example
-      - ADMIN_PASSWORD_HASH=testpwd
+      - ADMIN_PASSWORD_HASH=342df5b036b2f28184536820af6d1caf
     command: fastapi dev app.py --host 0.0.0.0 --reload
   db:
     image: postgres
