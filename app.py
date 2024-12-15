@@ -37,6 +37,12 @@ def fixBadData(df: pd.DataFrame) -> None:
 def csvToList(input) -> list[str]:
     return input.split(",")
 
+def insert_in_chunks(session, data, chunk_size=10000):
+    for i in range(0, len(data), chunk_size):
+        print(f"Inserted {i+1} chunks")
+        chunk = data[i:i+chunk_size]
+        session.bulk_insert_mappings(GameData, chunk)
+
 @app.post("/upload-csv/")
 async def upload_csv(body: UploadCsvRequest, db: Session = Depends(get_db), _ = Depends(verify_password)):
     try:
@@ -52,31 +58,31 @@ async def upload_csv(body: UploadCsvRequest, db: Session = Depends(get_db), _ = 
         
         # Bulk insert
         db_records = [
-            GameData(
-                app_id=record.get('AppID'),
-                name=record.get('Name'),
-                release_date=parseDate(record.get('Release date')),
-                required_age=record.get('Required age'),
-                price=record.get('Price'),
-                dlc_count=record.get('DLC count'),
-                about_the_game=record.get('About the game'),
-                supported_languages=json.loads(str(record.get('Supported languages')).replace("'", '"')),
-                windows=record.get('Windows'),
-                mac=record.get('Mac'),
-                linux=record.get('Linux'),
-                positive_reviews=record.get('Positive'),
-                negative_reviews=record.get('Negative'),
-                score_rank=record.get('Score rank'),
-                developers=record.get('Developers'),
-                publishers=record.get('Publishers'),
-                categories=csvToList(record.get('Categories')),
-                genres=csvToList(record.get('Genres')),
-                tags=csvToList(record.get('Tags'))
-            )
-            for record in records
+            {
+                "app_id": record.get("AppID"),
+                "name": record.get("Name"),
+                "release_date": parseDate(record.get("Release date")),
+                "required_age": record.get("Required age"),
+                "price": record.get("Price"),
+                "dlc_count": record.get("DLC count"),
+                "about_the_game": record.get("About the game"),
+                "supported_languages": json.loads(str(record.get("Supported languages")).replace("'", '"')),
+                "windows": record.get("Windows"),
+                "mac": record.get("Mac"),
+                "linux": record.get("Linux"),
+                "positive_reviews": record.get("Positive"),
+                "negative_reviews": record.get("Negative"),
+                "score_rank": record.get("Score rank"),
+                "developers": record.get("Developers"),
+                "publishers": record.get("Publishers"),
+                "categories": csvToList(record.get("Categories")),
+                "genres": csvToList(record.get("Genres")),
+                "tags": csvToList(record.get("Tags")),
+            }
+           for record in records
         ]
-        
-        db.bulk_save_objects(db_records)
+
+        insert_in_chunks(db, db_records)
         db.commit()
         
         return {"message": f"Uploaded {len(records)} records successfully"}
