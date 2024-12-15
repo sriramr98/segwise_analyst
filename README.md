@@ -270,13 +270,12 @@ For 1 million rows: 4,775 * 1,000,000 = 4.775 GB base table size
 With indexes and overhead, estimate ~7-8 GB total
 
 ### DATABASE CONFIGURATION
-RDS Postgres Instance
+RDS Postgres Instance (db.m4.xlarge)
 * 16 GB RAM
 * 4 vCPUs
 * 250 GB SSD Storage
 
-1 instance(s) x 1.028 USD hourly x (100 / 100 Utilized/Month) x 730 hours in a month = 750.4400 USD
-Amazon RDS PostgreSQL instances cost (monthly): 985.64 USD (with networking costs)
+1 instance(s) x 0.514 USD hourly x (100 / 100 Utilized/Month) x 730 hours in a month = 375.2200 USD
 
 ### API SERVER COST
 
@@ -291,7 +290,7 @@ Amazon RDS PostgreSQL instances cost (monthly): 985.64 USD (with networking cost
   * 15TB of processed data ( GET API responses )
   * Cost = 140 USD
 
-TOTAL COST = API SERVER (EC2 + Data Transfer) + LOAD BALANCER + RDS = 65 + 1555 + 140 + 985 = 2745 USD per month
+TOTAL COST = API SERVER (EC2 + Data Transfer) + LOAD BALANCER + RDS = 65 + 1555 + 140 + 375 = 2135 USD per month
 
 ## COST OPTIMISATIONS
 1. GET API should be paginated so that outbound is only charged for what the user views ( this will optimise both EC2 outbound and LB data processed costs significantly )
@@ -323,13 +322,13 @@ COST = 0 ( not including free tier )
 > NOTE: Load balancer isn't required since we can just call the lambda directly saving on outbound network costs
 
 #### DATA TRANSFER COSTS
-1. Assuming GET requests are paginated and 500 rows are rendered ( viewed by the user )
+1. Assuming GET requests are paginated and 500 rows are rendered for every request ( viewed by the user )
 2. Total Requests per month = 500 rows * 100 requests * 30 days = 15,00,000
 3. Total Data Transferred = 1500000 * 4,775 bytes = 7GB per month = 0.77 USD
 
-TOTAL COST = Cost of RDS + Lambda Costs + Network Costs = 985 + 0.77 + 0 = 958 USD per month
+TOTAL COST = Cost of RDS + Lambda Costs + Network Costs = 375 + 0.77 + 0 = 375 USD per month
 
 ## COST COMPARISONS
-* COST BEFORE OPTIMISATION = 2745 USD
-* COST AFTER OPTIMISATION = 958 USD
-* SAVINGS PERCENTAGE = 65%
+* COST BEFORE OPTIMISATION = 2135 USD
+* COST AFTER OPTIMISATION = 374 USD
+* SAVINGS PERCENTAGE = 82%
